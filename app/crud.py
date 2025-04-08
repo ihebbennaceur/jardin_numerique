@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from models import User, Jardin
+from app.models import User, Jardin
 from schemas import UserCreate, JardinCreate
 from passlib.context import CryptContext
 

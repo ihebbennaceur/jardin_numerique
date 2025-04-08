@@ -4,3 +4,8 @@ uvicorn main:app --reload
 
 pour executer les tests
 pytest tests/test_main.py
+
+
+ docker-compose up --build
+
+ docker-compose down --volumes --remove-orphans

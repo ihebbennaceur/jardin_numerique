@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
-from database import SessionLocal, engine, Base
-import models, crud, schemas
+from app.database import SessionLocal, engine, Base
+import app.models, app.crud, app.schemas
 from auth import create_access_token, decode_access_token
 
 app = FastAPI()
