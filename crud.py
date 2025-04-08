@@ -31,3 +31,6 @@ def create_jardin(db: Session, user_id: int, jardin: JardinCreate):
     db.commit()
     db.refresh(db_jardin)
     return db_jardin
+
+def get_user_by_id(db: Session, user_id: int):
+    return db.query(User).filter(User.id == user_id).first()
