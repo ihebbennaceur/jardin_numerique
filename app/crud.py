@@ -13,7 +13,7 @@ def verify_password(plain, hashed):
 
 def create_user(db: Session, user: UserCreate):
     hashed = get_password_hash(user.password)
-    db_user = User(email=user.email, hashed_password=hashed)
+    db_user = User(username=user.username,email=user.email, hashed_password=hashed)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

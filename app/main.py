@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer
-from database import SessionLocal, engine, Base
-import models, app.crud as crud, schemas
+from app.database import SessionLocal, engine, Base
+import app.models as models, app.crud as crud, app.schemas as schemas
 from app.auth import create_access_token, decode_access_token
 
 app = FastAPI()
@@ -43,3 +43,7 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
 @app.post("/jardin", response_model=schemas.JardinOut)
 def create_jardin(jardin: schemas.JardinCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
     return crud.create_jardin(db, current_user.id, jardin)
+
+@app.get("/")
+def hello():
+    return "hi"
