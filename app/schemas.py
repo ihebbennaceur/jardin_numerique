@@ -1,36 +1,84 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
 
-class UserCreate(BaseModel):
-    username:str
-    email: EmailStr
-    password: str
-    
+# Utilisateur
+class UtilisateurBase(BaseModel):
+    nom: str
+    email: str
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+class UtilisateurCreate(UtilisateurBase):
+    mot_de_passe: str
 
-class UserOut(BaseModel):
+class UtilisateurResponse(UtilisateurBase):
     id: int
-    email: EmailStr
     class Config:
         orm_mode = True
 
-class JardinCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
+# Plante
+class PlanteBase(BaseModel):
+    nom: str
+    type: str
+    photo: Optional[str] = None
 
-class JardinOut(BaseModel):
+class PlanteCreate(PlanteBase):
+    proprietaire_id: int
+
+class PlanteResponse(PlanteBase):
     id: int
-    name: str
-    description: Optional[str]
     class Config:
         orm_mode = True
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+# Capteur
+class CapteurBase(BaseModel):
+    type: str
+    valeur: float
 
-class TokenData(BaseModel):
-    email: Optional[str] = None
+class CapteurCreate(CapteurBase):
+    plante_id: int
+
+class CapteurResponse(CapteurBase):
+    id: int
+    timestamp: datetime
+    class Config:
+        orm_mode = True
+
+# Conseil
+class ConseilBase(BaseModel):
+    texte: str
+    type_plante: str
+
+class ConseilCreate(ConseilBase):
+    plante_id: int
+
+class ConseilResponse(ConseilBase):
+    id: int
+    class Config:
+        orm_mode = True
+
+# Produit
+class ProduitBase(BaseModel):
+    nom: str
+    description: str
+    note: float
+
+class ProduitCreate(ProduitBase):
+    utilisateur_id: int
+
+class ProduitResponse(ProduitBase):
+    id: int
+    class Config:
+        orm_mode = True
+
+# ReconnaissancePlante
+class ReconnaissancePlanteBase(BaseModel):
+    message: str
+    lu: bool = False
+
+class ReconnaissancePlanteCreate(ReconnaissancePlanteBase):
+    utilisateur_id: int
+
+class ReconnaissancePlanteResponse(ReconnaissancePlanteBase):
+    id: int
+    class Config:
+        orm_mode = True

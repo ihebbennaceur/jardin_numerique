@@ -1,14 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer
-from app.database import SessionLocal, engine, Base
-import app.models as models, app.crud as crud, app.schemas as schemas
-from app.auth import create_access_token, decode_access_token
+from . import models, schemas, crud
+from .database import engine, SessionLocal
+from typing import List, Optional
+import numpy as np
+from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input, decode_predictions
+from tensorflow.keras.preprocessing import image
+from fastapi import UploadFile, File
+import shutil
+import os
+
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-Base.metadata.create_all(bind=engine)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 def get_db():
     db = SessionLocal()
@@ -17,33 +22,140 @@ def get_db():
     finally:
         db.close()
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    user_id = decode_access_token(token)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Token invalide")
-    user = crud.get_user_by_id(db, int(user_id))
-    if user is None:
-        raise HTTPException(status_code=401, detail="Utilisateur non trouvé")
-    return user
+# Route pour l'inscription
+@app.post("/inscription/")
+def inscription(nom: str, email: str, mot_de_passe: str, db: Session = Depends(get_db)):
+    utilisateur = models.Utilisateur.s_inscrire(db, nom, email, mot_de_passe)
+    return {"message": "Inscription réussie", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
 
-@app.post("/register", response_model=schemas.UserOut)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    if db.query(models.User).filter(models.User.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Email déjà utilisé")
-    return crud.create_user(db, user)
+# Route pour la connexion
+@app.post("/connexion/")
+def connexion(email: str, mot_de_passe: str, db: Session = Depends(get_db)):
+    utilisateur = models.Utilisateur.se_connecter(db, email, mot_de_passe)
+    if not utilisateur:
+        raise HTTPException(status_code=400, detail="Email ou mot de passe incorrect")
+    return {"message": "Connexion réussie", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
 
-@app.post("/login", response_model=schemas.Token)
-def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    auth_user = crud.authenticate_user(db, user.email, user.password)
-    if not auth_user:
-        raise HTTPException(status_code=401, detail="Identifiants incorrects")
-    token = create_access_token(data={"sub": str(auth_user.id)})
-    return {"access_token": token, "token_type": "bearer"}
+# Route pour modifier le compte utilisateur
+@app.put("/utilisateurs/{utilisateur_id}/")
+def modifier_utilisateur(utilisateur_id: int, nom: Optional[str] = None, email: Optional[str] = None, db: Session = Depends(get_db)):
+    utilisateur = db.query(models.Utilisateur).filter(models.Utilisateur.id == utilisateur_id).first()
+    if not utilisateur:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    utilisateur.gerer_compte(db, nom, email)
+    return {"message": "Compte mis à jour", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
 
-@app.post("/jardin", response_model=schemas.JardinOut)
-def create_jardin(jardin: schemas.JardinCreate, current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return crud.create_jardin(db, current_user.id, jardin)
+# # Routes pour Utilisateur
+# @app.post("/utilisateurs/", response_model=schemas.UtilisateurResponse)
+# def create_utilisateur(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
+#     return crud.create_utilisateur(db=db, utilisateur=utilisateur)
 
-@app.get("/")
-def hello():
-    return "hi"
+@app.get("/utilisateurs/{utilisateur_id}", response_model=schemas.UtilisateurResponse)
+def read_utilisateur(utilisateur_id: int, db: Session = Depends(get_db)):
+    db_utilisateur = crud.get_utilisateur(db, utilisateur_id=utilisateur_id)
+    if db_utilisateur is None:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return db_utilisateur
+
+@app.get("/utilisateurs/all", response_model=List[schemas.UtilisateurResponse])
+def read_utilisateurs(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return crud.get_utilisateurs(db, skip=skip, limit=limit)
+
+# Routes pour Plante
+@app.post("/plantes/", response_model=schemas.PlanteResponse)
+def create_plante(plante: schemas.PlanteCreate, db: Session = Depends(get_db)):
+    return crud.create_plante(db=db, plante=plante)
+
+@app.get("/plantes/", response_model=List[schemas.PlanteResponse])
+def read_plantes(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return crud.get_plantes(db, skip=skip, limit=limit)
+
+@app.delete("/plantes/{plante_id}/", response_model=dict)
+def delete_plante(plante_id: int, db: Session = Depends(get_db)):
+    plante = db.query(models.Plante).filter(models.Plante.id == plante_id).first()
+    if not plante:
+        raise HTTPException(status_code=404, detail="Plante non trouvée")
+    db.delete(plante)
+    db.commit()
+    return {"message": f"Plante avec l'ID {plante_id} supprimée avec succès"}
+
+# Routes pour Capteur
+@app.post("/capteurs/", response_model=schemas.CapteurResponse)
+def create_capteur(capteur: schemas.CapteurCreate, db: Session = Depends(get_db)):
+    return crud.create_capteur(db=db, capteur=capteur)
+
+@app.get("/capteurs/", response_model=List[schemas.CapteurResponse])
+def read_capteurs(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return crud.get_capteurs(db, skip=skip, limit=limit)
+
+@app.get("/capteurs/{capteur_id}", response_model=schemas.CapteurResponse)
+def read_capteur(capteur_id: int, db: Session = Depends(get_db)):
+    db_capteur = crud.get_capteur(db, capteur_id=capteur_id)
+    if db_capteur is None:
+        raise HTTPException(status_code=404, detail="Capteur non trouvé")
+    return db_capteur
+
+# Routes pour Conseil
+@app.post("/conseils/", response_model=schemas.ConseilResponse)
+def create_conseil(conseil: schemas.ConseilCreate, db: Session = Depends(get_db)):
+    return crud.create_conseil(db=db, conseil=conseil)
+
+@app.get("/conseils/", response_model=List[schemas.ConseilResponse])
+def read_conseils(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return crud.get_conseils(db, skip=skip, limit=limit)
+
+@app.get("/conseils/{conseil_id}", response_model=schemas.ConseilResponse)
+def read_conseil(conseil_id: int, db: Session = Depends(get_db)):
+    db_conseil = crud.get_conseil(db, conseil_id=conseil_id)
+    if db_conseil is None:
+        raise HTTPException(status_code=404, detail="Conseil non trouvé")
+    return db_conseil
+
+# Routes pour Produit
+@app.post("/produits/", response_model=schemas.ProduitResponse)
+def create_produit(produit: schemas.ProduitCreate, db: Session = Depends(get_db)):
+    return crud.create_produit(db=db, produit=produit)
+
+@app.get("/produits/", response_model=List[schemas.ProduitResponse])
+def read_produits(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    return crud.get_produits(db, skip=skip, limit=limit)
+
+@app.get("/produits/{produit_id}", response_model=schemas.ProduitResponse)
+def read_produit(produit_id: int, db: Session = Depends(get_db)):
+    db_produit = crud.get_produit(db, produit_id=produit_id)
+    if db_produit is None:
+        raise HTTPException(status_code=404, detail="Produit non trouvé")
+    return db_produit
+
+model = ResNet50(weights='imagenet')
+
+@app.post("/reconnaissance_plantes/image/")
+async def reconnaitre_plante(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    # Sauvegarder temporairement l'image téléchargée
+    temp_file_path = f"temp_{file.filename}"
+    with open(temp_file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        # Charger l'image et la redimensionner à 224x224 (taille attendue par ResNet50)
+        img = image.load_img(temp_file_path, target_size=(224, 224))
+
+        # Prétraiter l'image
+        x = image.img_to_array(img)
+        x = np.expand_dims(x, axis=0)
+        x = preprocess_input(x)
+
+        # Prédire la classe
+        preds = model.predict(x)
+        decoded = decode_predictions(preds, top=5)[0]
+
+        # Formater les résultats
+        predictions = [{"label": label, "probability": float(prob)} for (_, label, prob) in decoded]
+
+        # Retourner les prédictions
+        return {"predictions": predictions}
+
+    finally:
+        # Supprimer le fichier temporaire
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
