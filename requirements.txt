@@ -13,3 +13,5 @@ pillow
 numpy
 python-multipart
 tensorflow
+dotenv
+requests

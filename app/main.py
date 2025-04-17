@@ -1,20 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from . import models, schemas, crud
-from .database import engine, SessionLocal
 from typing import List, Optional
-import numpy as np
-from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input, decode_predictions
-from tensorflow.keras.preprocessing import image
-from fastapi import UploadFile, File
-import shutil
+import models, schemas, crud
+from database import SessionLocal, engine
+from auth import create_access_token, decode_access_token, verify_password, get_password_hash
+from datetime import timedelta
 import os
+from pydantic import BaseModel
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-
+# Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -22,140 +21,218 @@ def get_db():
     finally:
         db.close()
 
-# Route pour l'inscription
-@app.post("/inscription/")
-def inscription(nom: str, email: str, mot_de_passe: str, db: Session = Depends(get_db)):
-    utilisateur = models.Utilisateur.s_inscrire(db, nom, email, mot_de_passe)
-    return {"message": "Inscription réussie", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Route pour la connexion
-@app.post("/connexion/")
-def connexion(email: str, mot_de_passe: str, db: Session = Depends(get_db)):
-    utilisateur = models.Utilisateur.se_connecter(db, email, mot_de_passe)
-    if not utilisateur:
-        raise HTTPException(status_code=400, detail="Email ou mot de passe incorrect")
-    return {"message": "Connexion réussie", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
+# ------------------ AUTHENTIFICATION ------------------
+from fastapi import Request  # Ajoutez cette importation
+@app.post("/admin/creer_admin", response_model=schemas.UtilisateurResponse)
+def creer_admin(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
+    # Vérifiez si un admin existe déjà
+    admin_existant = db.query(models.Utilisateur).filter(models.Utilisateur.role == "admin").first()
+    if admin_existant:
+        raise HTTPException(status_code=400, detail="Un admin existe déjà.")
+    
+    # Créez l'utilisateur avec le rôle admin
+    utilisateur.role = "admin"
+    return crud.create_utilisateur(db=db, utilisateur=utilisateur)
 
-# Route pour modifier le compte utilisateur
-@app.put("/utilisateurs/{utilisateur_id}/")
-def modifier_utilisateur(utilisateur_id: int, nom: Optional[str] = None, email: Optional[str] = None, db: Session = Depends(get_db)):
-    utilisateur = db.query(models.Utilisateur).filter(models.Utilisateur.id == utilisateur_id).first()
-    if not utilisateur:
+@app.post("/login", response_model=schemas.Token)
+async def login(data: schemas.LoginRequest, db: Session = Depends(get_db)):
+    email = data.email
+    password = data.password
+
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Email et mot de passe sont requis pour se connecter"
+        )
+    
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or not verify_password(password, user.mot_de_passe):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou mot de passe incorrect",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=30)
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+@app.post("/inscription", response_model=schemas.UtilisateurResponse)
+def inscription(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
+    db_user = crud.get_utilisateur_by_email(db, email=utilisateur.email)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email déjà enregistré")
+    return crud.create_utilisateur(db=db, utilisateur=utilisateur)
+
+# ------------------ FONCTIONNALITÉS UTILISATEUR ------------------
+@app.get("/utilisateurs/me", response_model=schemas.UtilisateurResponse)
+def lire_utilisateur_courant(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    utilisateur.gerer_compte(db, nom, email)
-    return {"message": "Compte mis à jour", "utilisateur": {"id": utilisateur.id, "email": utilisateur.email}}
+    return user
 
-# # Routes pour Utilisateur
-# @app.post("/utilisateurs/", response_model=schemas.UtilisateurResponse)
-# def create_utilisateur(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
-#     return crud.create_utilisateur(db=db, utilisateur=utilisateur)
-
-@app.get("/utilisateurs/{utilisateur_id}", response_model=schemas.UtilisateurResponse)
-def read_utilisateur(utilisateur_id: int, db: Session = Depends(get_db)):
-    db_utilisateur = crud.get_utilisateur(db, utilisateur_id=utilisateur_id)
-    if db_utilisateur is None:
+@app.put("/utilisateurs/me")
+def modifier_utilisateur(
+    nom: Optional[str] = None,
+    email: Optional[str] = None,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email_token = decode_access_token(token)
+    if not email_token:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email_token)
+    if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return db_utilisateur
+    
+    if nom:
+        user.nom = nom
+    if email:
+        user.email = email
+    
+    db.commit()
+    db.refresh(user)
+    return user
 
-@app.get("/utilisateurs/all", response_model=List[schemas.UtilisateurResponse])
-def read_utilisateurs(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return crud.get_utilisateurs(db, skip=skip, limit=limit)
-
-# Routes pour Plante
-@app.post("/plantes/", response_model=schemas.PlanteResponse)
-def create_plante(plante: schemas.PlanteCreate, db: Session = Depends(get_db)):
-    return crud.create_plante(db=db, plante=plante)
-
-@app.get("/plantes/", response_model=List[schemas.PlanteResponse])
-def read_plantes(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+@app.get("/plantes", response_model=List[schemas.PlanteResponse])
+def lire_plantes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_plantes(db, skip=skip, limit=limit)
 
-@app.delete("/plantes/{plante_id}/", response_model=dict)
-def delete_plante(plante_id: int, db: Session = Depends(get_db)):
-    plante = db.query(models.Plante).filter(models.Plante.id == plante_id).first()
+@app.get("/plantes/{plante_id}", response_model=schemas.PlanteResponse)
+def lire_plante(plante_id: int, db: Session = Depends(get_db)):
+    plante = crud.get_plante(db, plante_id)
     if not plante:
         raise HTTPException(status_code=404, detail="Plante non trouvée")
-    db.delete(plante)
-    db.commit()
-    return {"message": f"Plante avec l'ID {plante_id} supprimée avec succès"}
+    return plante
 
-# Routes pour Capteur
-@app.post("/capteurs/", response_model=schemas.CapteurResponse)
-def create_capteur(capteur: schemas.CapteurCreate, db: Session = Depends(get_db)):
-    return crud.create_capteur(db=db, capteur=capteur)
+@app.post("/plantes", response_model=schemas.PlanteResponse)
+def ajouter_plante(
+    plante: schemas.PlanteCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return crud.create_plante(db, plante, user.id)
 
-@app.get("/capteurs/", response_model=List[schemas.CapteurResponse])
-def read_capteurs(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return crud.get_capteurs(db, skip=skip, limit=limit)
+@app.post("/propositions", response_model=schemas.PropositionPlanteResponse)
+def proposer_plante(
+    proposition: schemas.PropositionPlanteCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return crud.create_proposition_plante(db, proposition, user.id)
 
-@app.get("/capteurs/{capteur_id}", response_model=schemas.CapteurResponse)
-def read_capteur(capteur_id: int, db: Session = Depends(get_db)):
-    db_capteur = crud.get_capteur(db, capteur_id=capteur_id)
-    if db_capteur is None:
-        raise HTTPException(status_code=404, detail="Capteur non trouvé")
-    return db_capteur
+@app.get("/plantes/{plante_id}/conseils", response_model=List[schemas.ConseilResponse])
+def lire_conseils_plante(plante_id: int, db: Session = Depends(get_db)):
+    return crud.get_conseils_plante(db, plante_id)
 
-# Routes pour Conseil
-@app.post("/conseils/", response_model=schemas.ConseilResponse)
-def create_conseil(conseil: schemas.ConseilCreate, db: Session = Depends(get_db)):
-    return crud.create_conseil(db=db, conseil=conseil)
+@app.post("/conseils", response_model=schemas.ConseilResponse)
+def ajouter_conseil(
+    conseil: schemas.ConseilCreate,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return crud.create_conseil(db, conseil, user.id)
 
-@app.get("/conseils/", response_model=List[schemas.ConseilResponse])
-def read_conseils(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return crud.get_conseils(db, skip=skip, limit=limit)
+@app.get("/recommendations", response_model=List[schemas.RecommendationResponse])
+def lire_recommandations(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return crud.get_recommendations_utilisateur(db, user.id)
 
-@app.get("/conseils/{conseil_id}", response_model=schemas.ConseilResponse)
-def read_conseil(conseil_id: int, db: Session = Depends(get_db)):
-    db_conseil = crud.get_conseil(db, conseil_id=conseil_id)
-    if db_conseil is None:
-        raise HTTPException(status_code=404, detail="Conseil non trouvé")
-    return db_conseil
+# ------------------ FONCTIONNALITÉS ADMIN ------------------
+@app.get("/admin/propositions", response_model=List[schemas.PropositionPlanteResponse])
+def lire_propositions_admin(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permission refusée")
+    return crud.get_propositions(db, skip=skip, limit=limit)
 
-# Routes pour Produit
-@app.post("/produits/", response_model=schemas.ProduitResponse)
-def create_produit(produit: schemas.ProduitCreate, db: Session = Depends(get_db)):
-    return crud.create_produit(db=db, produit=produit)
+@app.post("/admin/propositions/{proposition_id}/valider", response_model=schemas.PlanteResponse)
+def valider_proposition(
+    proposition_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permission refusée")
+    
+    plante = crud.valider_proposition(db, proposition_id)
+    if not plante:
+        raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    return plante
 
-@app.get("/produits/", response_model=List[schemas.ProduitResponse])
-def read_produits(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    return crud.get_produits(db, skip=skip, limit=limit)
+@app.delete("/admin/plantes/{plante_id}")
+def supprimer_plante_admin(
+    plante_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permission refusée")
+    
+    if not crud.delete_plante(db, plante_id):
+        raise HTTPException(status_code=404, detail="Plante non trouvée")
+    return {"message": "Plante supprimée avec succès"}
 
-@app.get("/produits/{produit_id}", response_model=schemas.ProduitResponse)
-def read_produit(produit_id: int, db: Session = Depends(get_db)):
-    db_produit = crud.get_produit(db, produit_id=produit_id)
-    if db_produit is None:
-        raise HTTPException(status_code=404, detail="Produit non trouvé")
-    return db_produit
-
-model = ResNet50(weights='imagenet')
-
-@app.post("/reconnaissance_plantes/image/")
-async def reconnaitre_plante(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    # Sauvegarder temporairement l'image téléchargée
-    temp_file_path = f"temp_{file.filename}"
-    with open(temp_file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    try:
-        # Charger l'image et la redimensionner à 224x224 (taille attendue par ResNet50)
-        img = image.load_img(temp_file_path, target_size=(224, 224))
-
-        # Prétraiter l'image
-        x = image.img_to_array(img)
-        x = np.expand_dims(x, axis=0)
-        x = preprocess_input(x)
-
-        # Prédire la classe
-        preds = model.predict(x)
-        decoded = decode_predictions(preds, top=5)[0]
-
-        # Formater les résultats
-        predictions = [{"label": label, "probability": float(prob)} for (_, label, prob) in decoded]
-
-        # Retourner les prédictions
-        return {"predictions": predictions}
-
-    finally:
-        # Supprimer le fichier temporaire
-        if os.path.exists(temp_file_path):
-            os.remove(temp_file_path)
+@app.get("/admin/utilisateurs", response_model=List[schemas.UtilisateurResponse])
+def lire_utilisateurs_admin(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permission refusée")
+    return crud.get_utilisateurs(db, skip=skip, limit=limit)

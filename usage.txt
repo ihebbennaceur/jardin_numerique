@@ -9,3 +9,44 @@ pytest tests/test_main.py
  docker-compose up --build
 
  docker-compose down --volumes --remove-orphans
+
+
+Fonctionnalités Utilisateur :
+
+S'inscrire / Se connecter
+
+Gérer son profil
+
+Voir le catalogue des plantes
+
+Ajouter une plante
+
+Proposer une nouvelle plante
+
+Voir les conseils
+
+Recevoir des recommandations
+
+Fonctionnalités Admin :
+
+Valider les propositions de plantes
+
+Gérer le catalogue
+
+Gérer les utilisateurs
+
+Sécurité :
+
+Authentification JWT
+
+Vérification des rôles
+
+Protection des routes
+
+Workflow complet :
+
+Un utilisateur propose une plante
+
+L'admin valide la proposition
+
+La plante apparaît dans le catalogue

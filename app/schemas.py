@@ -1,17 +1,30 @@
 from pydantic import BaseModel
 from typing import Optional, List
+from enum import Enum
 from datetime import datetime
+
+class Role(str, Enum):
+    USER = "user"
+    ADMIN = "admin"
 
 # Utilisateur
 class UtilisateurBase(BaseModel):
     nom: str
     email: str
 
-class UtilisateurCreate(UtilisateurBase):
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+    
+class UtilisateurCreate(BaseModel):
+    nom: str
+    email: str
     mot_de_passe: str
+    role: Optional[Role] = Role.USER  # Par défaut, le rôle est "user"
 
 class UtilisateurResponse(UtilisateurBase):
     id: int
+    role: Role
     class Config:
         orm_mode = True
 
@@ -19,66 +32,68 @@ class UtilisateurResponse(UtilisateurBase):
 class PlanteBase(BaseModel):
     nom: str
     type: str
-    photo: Optional[str] = None
+    description: str
 
 class PlanteCreate(PlanteBase):
-    proprietaire_id: int
+    pass
 
 class PlanteResponse(PlanteBase):
     id: int
+    approuvee: bool
+    proprietaire_id: int
     class Config:
         orm_mode = True
 
-# Capteur
-class CapteurBase(BaseModel):
+# Proposition Plante
+class PropositionPlanteBase(BaseModel):
+    nom: str
     type: str
-    valeur: float
+    description: str
 
-class CapteurCreate(CapteurBase):
-    plante_id: int
+class PropositionPlanteCreate(PropositionPlanteBase):
+    pass
 
-class CapteurResponse(CapteurBase):
+class PropositionPlanteResponse(PropositionPlanteBase):
     id: int
-    timestamp: datetime
+    statut: str
+    utilisateur_id: int
     class Config:
         orm_mode = True
 
 # Conseil
 class ConseilBase(BaseModel):
-    texte: str
-    type_plante: str
+    titre: str
+    description: str
 
 class ConseilCreate(ConseilBase):
     plante_id: int
 
 class ConseilResponse(ConseilBase):
     id: int
+    plante_id: int
+    auteur_id: int
     class Config:
         orm_mode = True
 
-# Produit
-class ProduitBase(BaseModel):
-    nom: str
-    description: str
-    note: float
+# Recommendation
+class RecommendationBase(BaseModel):
+    raison: str
+    plante_id: int
 
-class ProduitCreate(ProduitBase):
-    utilisateur_id: int
+class RecommendationCreate(RecommendationBase):
+    pass
 
-class ProduitResponse(ProduitBase):
+class RecommendationResponse(RecommendationBase):
     id: int
-    class Config:
-        orm_mode = True
-
-# ReconnaissancePlante
-class ReconnaissancePlanteBase(BaseModel):
-    message: str
-    lu: bool = False
-
-class ReconnaissancePlanteCreate(ReconnaissancePlanteBase):
     utilisateur_id: int
-
-class ReconnaissancePlanteResponse(ReconnaissancePlanteBase):
-    id: int
+    date: datetime
     class Config:
         orm_mode = True
+
+# Token
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
