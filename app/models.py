@@ -2,6 +2,8 @@ from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from database import Base
 from enum import Enum as PyEnum
+from typing import Optional
+from sqlalchemy.ext.declarative import declarative_base
 
 class Role(str, PyEnum):
     USER = "user"
@@ -13,6 +15,7 @@ class Utilisateur(Base):
     nom = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     mot_de_passe = Column(String)
+    profilepic = Column(String, nullable=True) 
     role = Column(Enum(Role), default=Role.USER)  # Par défaut, le rôle est "user"
     plantes = relationship("Plante", back_populates="proprietaire")  # Relation avec Plante
     propositions = relationship("PropositionPlante", back_populates="utilisateur")

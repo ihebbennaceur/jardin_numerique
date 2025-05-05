@@ -8,10 +8,32 @@ from auth import create_access_token, decode_access_token, verify_password, get_
 from datetime import timedelta
 import os
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session
+import shutil
+from database import SessionLocal, engine
+from models import Base, Utilisateur
+from auth import get_current_user 
+from passlib.context import CryptContext
+
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Dependency
 def get_db():
@@ -25,12 +47,22 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # ------------------ AUTHENTIFICATION ------------------
 from fastapi import Request  # Ajoutez cette importation
+
 @app.post("/admin/creer_admin", response_model=schemas.UtilisateurResponse)
 def creer_admin(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
+    # Vérifiez si un utilisateur avec cet email existe déjà
+    utilisateur_existant = db.query(models.Utilisateur).filter(models.Utilisateur.email == utilisateur.email).first()
+    if utilisateur_existant:
+        raise HTTPException(status_code=400, detail="Un utilisateur avec cet email existe déjà.")
+    
     # Vérifiez si un admin existe déjà
     admin_existant = db.query(models.Utilisateur).filter(models.Utilisateur.role == "admin").first()
     if admin_existant:
         raise HTTPException(status_code=400, detail="Un admin existe déjà.")
+    
+    # Si profilepic est vide ou None, définissez une valeur par défaut
+    if not utilisateur.profilepic:
+        utilisateur.profilepic = "assets/profile.jpg"
     
     # Créez l'utilisateur avec le rôle admin
     utilisateur.role = "admin"
@@ -69,37 +101,43 @@ def inscription(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(ge
 
 # ------------------ FONCTIONNALITÉS UTILISATEUR ------------------
 @app.get("/utilisateurs/me", response_model=schemas.UtilisateurResponse)
-def lire_utilisateur_courant(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
-    email = decode_access_token(token)
-    if not email:
-        raise HTTPException(status_code=401, detail="Token invalide")
-    user = crud.get_utilisateur_by_email(db, email)
+def lire_utilisateur_courant(
+    db: Session = Depends(get_db),
+    current_user: Utilisateur = Depends(get_current_user)
+):
+    user = db.query(Utilisateur).filter(Utilisateur.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
     return user
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+class UtilisateurUpdate(BaseModel):
+    nom: str
+    email: str
+    mot_de_passe: Optional[str] = None
+    photo: Optional[str] = None
 @app.put("/utilisateurs/me")
-def modifier_utilisateur(
-    nom: Optional[str] = None,
-    email: Optional[str] = None,
+async def modifier_utilisateur(
+    nom: str = Form(...),
+    email: str = Form(...),
+    mot_de_passe: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    token: str = Depends(oauth2_scheme)
+    current_user: Utilisateur = Depends(get_current_user)
 ):
-    email_token = decode_access_token(token)
-    if not email_token:
-        raise HTTPException(status_code=401, detail="Token invalide")
-    user = crud.get_utilisateur_by_email(db, email_token)
+    user = db.query(Utilisateur).filter(Utilisateur.id == current_user.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    
-    if nom:
-        user.nom = nom
-    if email:
-        user.email = email
-    
+
+    user.nom = nom
+    user.email = email
+
+    if mot_de_passe:
+        user.mot_de_passe = pwd_context.hash(mot_de_passe)
+
     db.commit()
     db.refresh(user)
-    return user
+    return {"message": "Profil mis à jour avec succès"}
+
 
 @app.get("/plantes", response_model=List[schemas.PlanteResponse])
 def lire_plantes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

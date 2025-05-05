@@ -21,12 +21,19 @@ class UtilisateurCreate(BaseModel):
     email: str
     mot_de_passe: str
     role: Optional[Role] = Role.USER  # Par défaut, le rôle est "user"
+    profilepic: Optional[str] = "/assets/profile.jpg"  
 
 class UtilisateurResponse(UtilisateurBase):
     id: int
-    role: Role
+    nom: str
+    email: str
+    role: str
+    profilepic: Optional[str] = "/assets/profile.jpg"  # Ajoutez une valeur par défaut ici
+
     class Config:
         orm_mode = True
+
+      
 
 # Plante
 class PlanteBase(BaseModel):
