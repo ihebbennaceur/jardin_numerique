@@ -19,6 +19,16 @@ def create_utilisateur(db: Session, utilisateur: schemas.UtilisateurCreate):
     db.refresh(db_utilisateur)
     return db_utilisateur
 
+
+def reject_proposition(db: Session, proposition_id: int):
+    proposition = db.query(models.PropositionPlante).filter(models.PropositionPlante.id == proposition_id).first()
+    if not proposition:
+        return None
+    proposition.statut = "rejected"
+    db.commit()
+    db.refresh(proposition)
+    return proposition
+
 def get_user_propositions(db: Session, user_id: int) -> List[models.PropositionPlante]:
     return db.query(models.PropositionPlante).filter(models.PropositionPlante.utilisateur_id == user_id).all()
 

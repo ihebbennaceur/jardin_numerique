@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -11,10 +11,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import Base, Utilisateur
 from auth import get_current_user 
 from passlib.context import CryptContext
+from fastapi.staticfiles import StaticFiles
+import os
+import shutil
+import uuid
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+app.mount("/uploads", StaticFiles(directory="Uploads"), name="uploads")
 
 origins = [
     "http://localhost:4200",
@@ -29,6 +34,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure uploads directory exists
+UPLOAD_DIR = "Uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -38,6 +48,46 @@ def get_db():
         db.close()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# ------------------ IMAGE UPLOAD ------------------
+@app.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    token: str = Depends(oauth2_scheme)
+):
+    # Verify user authentication
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    
+    # Validate file type
+    allowed_extensions = {".png", ".jpg", ".jpeg"}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, or JPEG files are allowed")
+    
+    # Validate file size (e.g., max 5MB)
+    max_size = 5 * 1024 * 1024  # 5MB in bytes
+    file_size = 0
+    for chunk in file.file:
+        file_size += len(chunk)
+        if file_size > max_size:
+            raise HTTPException(status_code=400, detail="File size exceeds 5MB limit")
+    file.file.seek(0)  # Reset file pointer
+    
+    # Generate unique filename
+    file_name = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, file_name)
+    
+    # Save file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    finally:
+        file.file.close()
+    
+    # Return the relative path
+    return {"image_url": f"/Uploads/{file_name}"}
 
 # ------------------ AUTHENTIFICATION ------------------
 @app.post("/admin/creer_admin", response_model=schemas.UtilisateurResponse)
@@ -55,7 +105,6 @@ def creer_admin(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(ge
     
     utilisateur.role = "admin"
     return crud.create_utilisateur(db=db, utilisateur=utilisateur)
-
 
 @app.post("/login", response_model=schemas.Token)
 async def login(data: schemas.LoginRequest, db: Session = Depends(get_db)):
@@ -238,14 +287,6 @@ def lire_mes_propositions(
         ) for prop in propositions
     ]
 
-import os
-from fastapi import UploadFile, File, Form
-# Ensure uploads directory exists
-UPLOAD_DIR = "uploads"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
-
-
 @app.get("/plantes/{plante_id}/conseils", response_model=List[schemas.ConseilResponse])
 def lire_conseils_plante(plante_id: int, db: Session = Depends(get_db)):
     return crud.get_conseils_plante(db, plante_id)
@@ -293,6 +334,26 @@ def lire_propositions_admin(
         raise HTTPException(status_code=403, detail="Permission refusée")
     return crud.get_propositions(db, skip=skip, limit=limit)
 
+
+@app.post("/admin/propositions/{proposition_id}/rejeter")
+def rejeter_proposition(
+    proposition_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Permission refusée")
+    
+    proposition = crud.reject_proposition(db, proposition_id)
+    if not proposition:
+        raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    return {"message": "Proposition rejetée avec succès"}
+
+
 @app.post("/admin/propositions/{proposition_id}/valider", response_model=schemas.PlanteResponse)
 def valider_proposition(
     proposition_id: int,
@@ -334,7 +395,6 @@ def supprimer_plante_admin(
         raise HTTPException(status_code=403, detail="Permission refusée")
     
     if not crud.delete_plante(db, plante_id):
-        
         raise HTTPException(status_code=404, detail="Plante non trouvée")
     return {"message": "Plante supprimée avec succès"}
 
@@ -352,3 +412,4 @@ def lire_utilisateurs_admin(
     if not user or user.role != "admin":
         raise HTTPException(status_code=403, detail="Permission refusée")
     return crud.get_utilisateurs(db, skip=skip, limit=limit)
+
