@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 from database import Base
 from enum import Enum as PyEnum
 from typing import Optional
-from sqlalchemy.ext.declarative import declarative_base
 
 class Role(str, PyEnum):
     USER = "user"
@@ -15,33 +14,32 @@ class Utilisateur(Base):
     nom = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     mot_de_passe = Column(String)
-    profilepic = Column(String, nullable=True) 
-    role = Column(Enum(Role), default=Role.USER)  # Par défaut, le rôle est "user"
-    plantes = relationship("Plante", back_populates="proprietaire")  # Relation avec Plante
+    profilepic = Column(String, nullable=True)
+    role = Column(Enum(Role), default=Role.USER)
+    plantes = relationship("Plante", back_populates="proprietaire")
     propositions = relationship("PropositionPlante", back_populates="utilisateur")
     conseils = relationship("Conseil", back_populates="auteur")
-
 
 class Plante(Base):
     __tablename__ = "plantes"
     id = Column(Integer, primary_key=True, index=True)
-    nom = Column(String, index=True)
-    type = Column(String)
+    name = Column(String, index=True)
+    type = Column(String, nullable=True)  # Made optional
     description = Column(String)
-    photo = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
     approuvee = Column(Boolean, default=False)
     proprietaire_id = Column(Integer, ForeignKey("utilisateurs.id"))
-    proprietaire = relationship("Utilisateur", back_populates="plantes")  # Relation avec Utilisateur
+    proprietaire = relationship("Utilisateur", back_populates="plantes")
     conseils = relationship("Conseil", back_populates="plante")
 
 class PropositionPlante(Base):
     __tablename__ = "propositions_plantes"
     id = Column(Integer, primary_key=True, index=True)
-    nom = Column(String)
-    type = Column(String)
+    name = Column(String)
+    type = Column(String, nullable=True)  # Made optional
     description = Column(String)
-    photo = Column(String, nullable=True)
-    statut = Column(String, default="en_attente")  # en_attente, approuvee, rejetee
+    image_url = Column(String, nullable=True)
+    statut = Column(String, default="en_attente")
     utilisateur_id = Column(Integer, ForeignKey("utilisateurs.id"))
     utilisateur = relationship("Utilisateur", back_populates="propositions")
 

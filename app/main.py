@@ -1,22 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import models, schemas, crud
 from database import SessionLocal, engine
 from auth import create_access_token, decode_access_token, verify_password, get_password_hash
 from datetime import timedelta
-import os
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
-import shutil
-from database import SessionLocal, engine
 from models import Base, Utilisateur
 from auth import get_current_user 
 from passlib.context import CryptContext
-
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -46,27 +40,22 @@ def get_db():
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # ------------------ AUTHENTIFICATION ------------------
-from fastapi import Request  # Ajoutez cette importation
-
 @app.post("/admin/creer_admin", response_model=schemas.UtilisateurResponse)
 def creer_admin(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
-    # Vérifiez si un utilisateur avec cet email existe déjà
     utilisateur_existant = db.query(models.Utilisateur).filter(models.Utilisateur.email == utilisateur.email).first()
     if utilisateur_existant:
         raise HTTPException(status_code=400, detail="Un utilisateur avec cet email existe déjà.")
     
-    # Vérifiez si un admin existe déjà
     admin_existant = db.query(models.Utilisateur).filter(models.Utilisateur.role == "admin").first()
     if admin_existant:
         raise HTTPException(status_code=400, detail="Un admin existe déjà.")
     
-    # Si profilepic est vide ou None, définissez une valeur par défaut
     if not utilisateur.profilepic:
         utilisateur.profilepic = "assets/profile.jpg"
     
-    # Créez l'utilisateur avec le rôle admin
     utilisateur.role = "admin"
     return crud.create_utilisateur(db=db, utilisateur=utilisateur)
+
 
 @app.post("/login", response_model=schemas.Token)
 async def login(data: schemas.LoginRequest, db: Session = Depends(get_db)):
@@ -88,10 +77,16 @@ async def login(data: schemas.LoginRequest, db: Session = Depends(get_db)):
         )
     
     access_token = create_access_token(
-        data={"sub": user.email},
+        data={"sub": user.email, "role": user.role},
         expires_delta=timedelta(minutes=30)
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_role": user.role,
+        "user_email": user.email
+    }
+
 @app.post("/inscription", response_model=schemas.UtilisateurResponse)
 def inscription(utilisateur: schemas.UtilisateurCreate, db: Session = Depends(get_db)):
     db_user = crud.get_utilisateur_by_email(db, email=utilisateur.email)
@@ -116,11 +111,10 @@ class UtilisateurUpdate(BaseModel):
     email: str
     mot_de_passe: Optional[str] = None
     photo: Optional[str] = None
+
 @app.put("/utilisateurs/me")
 async def modifier_utilisateur(
-    nom: str = Form(...),
-    email: str = Form(...),
-    mot_de_passe: Optional[str] = Form(None),
+    utilisateur: UtilisateurUpdate,
     db: Session = Depends(get_db),
     current_user: Utilisateur = Depends(get_current_user)
 ):
@@ -128,27 +122,50 @@ async def modifier_utilisateur(
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
 
-    user.nom = nom
-    user.email = email
+    user.nom = utilisateur.nom
+    user.email = utilisateur.email
 
-    if mot_de_passe:
-        user.mot_de_passe = pwd_context.hash(mot_de_passe)
+    if utilisateur.mot_de_passe:
+        user.mot_de_passe = pwd_context.hash(utilisateur.mot_de_passe)
+
+    if utilisateur.photo:
+        user.profilepic = utilisateur.photo
 
     db.commit()
     db.refresh(user)
     return {"message": "Profil mis à jour avec succès"}
 
-
 @app.get("/plantes", response_model=List[schemas.PlanteResponse])
 def lire_plantes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_plantes(db, skip=skip, limit=limit)
+    plantes = crud.get_plantes(db, skip=skip, limit=limit)
+    return [
+        schemas.PlanteResponse(
+            id=plante.id,
+            name=plante.name,
+            type=plante.type,
+            description=plante.description,
+            image_url=plante.image_url,
+            approuvee=plante.approuvee,
+            proprietaire_id=plante.proprietaire_id,
+            created_by=plante.proprietaire.nom
+        ) for plante in plantes
+    ]
 
 @app.get("/plantes/{plante_id}", response_model=schemas.PlanteResponse)
 def lire_plante(plante_id: int, db: Session = Depends(get_db)):
     plante = crud.get_plante(db, plante_id)
     if not plante:
         raise HTTPException(status_code=404, detail="Plante non trouvée")
-    return plante
+    return schemas.PlanteResponse(
+        id=plante.id,
+        name=plante.name,
+        type=plante.type,
+        description=plante.description,
+        image_url=plante.image_url,
+        approuvee=plante.approuvee,
+        proprietaire_id=plante.proprietaire_id,
+        created_by=plante.proprietaire.nom
+    )
 
 @app.post("/plantes", response_model=schemas.PlanteResponse)
 def ajouter_plante(
@@ -162,7 +179,17 @@ def ajouter_plante(
     user = crud.get_utilisateur_by_email(db, email)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return crud.create_plante(db, plante, user.id)
+    db_plante = crud.create_plante(db, plante, user.id)
+    return schemas.PlanteResponse(
+        id=db_plante.id,
+        name=db_plante.name,
+        type=db_plante.type,
+        description=db_plante.description,
+        image_url=db_plante.image_url,
+        approuvee=db_plante.approuvee,
+        proprietaire_id=db_plante.proprietaire_id,
+        created_by=user.nom
+    )
 
 @app.post("/propositions", response_model=schemas.PropositionPlanteResponse)
 def proposer_plante(
@@ -176,7 +203,48 @@ def proposer_plante(
     user = crud.get_utilisateur_by_email(db, email)
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return crud.create_proposition_plante(db, proposition, user.id)
+    db_proposition = crud.create_proposition_plante(db, proposition, user.id)
+    return schemas.PropositionPlanteResponse(
+        id=db_proposition.id,
+        name=db_proposition.name,
+        type=db_proposition.type,
+        description=db_proposition.description,
+        image_url=db_proposition.image_url,
+        statut=db_proposition.statut,
+        utilisateur_id=db_proposition.utilisateur_id
+    )
+
+@app.get("/propositions/me", response_model=List[schemas.PropositionPlanteResponse])
+def lire_mes_propositions(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    propositions = crud.get_user_propositions(db, user_id=user.id)
+    return [
+        schemas.PropositionPlanteResponse(
+            id=prop.id,
+            name=prop.name,
+            type=prop.type,
+            description=prop.description,
+            image_url=prop.image_url,
+            statut=prop.statut,
+            utilisateur_id=prop.utilisateur_id
+        ) for prop in propositions
+    ]
+
+import os
+from fastapi import UploadFile, File, Form
+# Ensure uploads directory exists
+UPLOAD_DIR = "uploads"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
 
 @app.get("/plantes/{plante_id}/conseils", response_model=List[schemas.ConseilResponse])
 def lire_conseils_plante(plante_id: int, db: Session = Depends(get_db)):
@@ -241,7 +309,16 @@ def valider_proposition(
     plante = crud.valider_proposition(db, proposition_id)
     if not plante:
         raise HTTPException(status_code=404, detail="Proposition non trouvée")
-    return plante
+    return schemas.PlanteResponse(
+        id=plante.id,
+        name=plante.name,
+        type=plante.type,
+        description=plante.description,
+        image_url=plante.image_url,
+        approuvee=plante.approuvee,
+        proprietaire_id=plante.proprietaire_id,
+        created_by=plante.proprietaire.nom
+    )
 
 @app.delete("/admin/plantes/{plante_id}")
 def supprimer_plante_admin(
@@ -257,6 +334,7 @@ def supprimer_plante_admin(
         raise HTTPException(status_code=403, detail="Permission refusée")
     
     if not crud.delete_plante(db, plante_id):
+        
         raise HTTPException(status_code=404, detail="Plante non trouvée")
     return {"message": "Plante supprimée avec succès"}
 

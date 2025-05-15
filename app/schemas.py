@@ -20,50 +20,68 @@ class UtilisateurCreate(BaseModel):
     nom: str
     email: str
     mot_de_passe: str
-    role: Optional[Role] = Role.USER  # Par défaut, le rôle est "user"
-    profilepic: Optional[str] = "/assets/profile.jpg"  
+    role: Optional[Role] = Role.USER
+    profilepic: Optional[str] = "/assets/profile.jpg"
 
 class UtilisateurResponse(UtilisateurBase):
     id: int
     nom: str
     email: str
     role: str
-    profilepic: Optional[str] = "/assets/profile.jpg"  # Ajoutez une valeur par défaut ici
+    profilepic: Optional[str] = "/assets/profile.jpg"
 
     class Config:
         orm_mode = True
-
-      
 
 # Plante
 class PlanteBase(BaseModel):
-    nom: str
-    type: str
+    name: str
+    type: Optional[str] = None
     description: str
+    image_url: Optional[str] = None
 
-class PlanteCreate(PlanteBase):
-    pass
+class PlanteCreate(BaseModel):
+    name: str
+    type: Optional[str] = None
+    description: str
+    image_url: Optional[str] = None
 
-class PlanteResponse(PlanteBase):
+class PlanteResponse(BaseModel):
     id: int
+    name: str
+    type: Optional[str] = None
+    description: str
+    image_url: Optional[str] = None
     approuvee: bool
     proprietaire_id: int
+    created_by: str
+
     class Config:
         orm_mode = True
+        from_attributes = True
 
 # Proposition Plante
 class PropositionPlanteBase(BaseModel):
-    nom: str
-    type: str
+    name: str
+    type: Optional[str] = None
     description: str
+    image_url: Optional[str] = None
 
-class PropositionPlanteCreate(PropositionPlanteBase):
-    pass
+class PropositionPlanteCreate(BaseModel):
+    name: str
+    type: Optional[str] = None
+    description: str
+    image_url: Optional[str] = None
 
-class PropositionPlanteResponse(PropositionPlanteBase):
+class PropositionPlanteResponse(BaseModel):
     id: int
+    name: str
+    type: Optional[str] = None
+    description: str
+    image_url: Optional[str] = None
     statut: str
     utilisateur_id: int
+
     class Config:
         orm_mode = True
 
@@ -72,13 +90,18 @@ class ConseilBase(BaseModel):
     titre: str
     description: str
 
-class ConseilCreate(ConseilBase):
+class ConseilCreate(BaseModel):
+    titre: str
+    description: str
     plante_id: int
 
-class ConseilResponse(ConseilBase):
+class ConseilResponse(BaseModel):
     id: int
+    titre: str
+    description: str
     plante_id: int
     auteur_id: int
+
     class Config:
         orm_mode = True
 
@@ -87,13 +110,17 @@ class RecommendationBase(BaseModel):
     raison: str
     plante_id: int
 
-class RecommendationCreate(RecommendationBase):
-    pass
+class RecommendationCreate(BaseModel):
+    raison: str
+    plante_id: int
 
-class RecommendationResponse(RecommendationBase):
+class RecommendationResponse(BaseModel):
     id: int
+    raison: str
+    plante_id: int
     utilisateur_id: int
     date: datetime
+
     class Config:
         orm_mode = True
 
@@ -101,6 +128,8 @@ class RecommendationResponse(RecommendationBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user_role: str
+    user_email: str
 
 class TokenData(BaseModel):
     email: Optional[str] = None
