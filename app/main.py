@@ -354,6 +354,21 @@ def rejeter_proposition(
     return {"message": "Proposition rejetée avec succès"}
 
 
+@app.get("/propositions", response_model=List[schemas.PropositionPlanteResponse])
+def lire_toutes_propositions(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    return crud.get_propositions(db, skip=skip, limit=limit)
+
 @app.post("/admin/propositions/{proposition_id}/valider", response_model=schemas.PlanteResponse)
 def valider_proposition(
     proposition_id: int,

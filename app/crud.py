@@ -20,6 +20,14 @@ def create_utilisateur(db: Session, utilisateur: schemas.UtilisateurCreate):
     return db_utilisateur
 
 
+def get_propositions(db: Session, skip: int = 0, limit: int = 100):
+    return (
+        db.query(models.PropositionPlante)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
 def reject_proposition(db: Session, proposition_id: int):
     proposition = db.query(models.PropositionPlante).filter(models.PropositionPlante.id == proposition_id).first()
     if not proposition:
