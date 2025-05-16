@@ -39,7 +39,7 @@ class PropositionPlante(Base):
     type = Column(String, nullable=True)  # Made optional
     description = Column(String)
     image_url = Column(String, nullable=True)
-    statut = Column(String, default="en_attente")
+    statut = Column(String, default="pending")
     utilisateur_id = Column(Integer, ForeignKey("utilisateurs.id"))
     utilisateur = relationship("Utilisateur", back_populates="propositions")
 

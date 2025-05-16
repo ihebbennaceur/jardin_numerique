@@ -103,7 +103,7 @@ def valider_proposition(db: Session, proposition_id: int):
     if not proposition:
         return None
     
-    proposition.statut = "approuvee"
+    proposition.statut = "approved"
     
     plante = models.Plante(
         name=proposition.name,

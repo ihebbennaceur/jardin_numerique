@@ -23,6 +23,18 @@ class UtilisateurCreate(BaseModel):
     role: Optional[Role] = Role.USER
     profilepic: Optional[str] = "/assets/profile.jpg"
 
+from enum import Enum
+
+class PropositionStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+    
+class WebSocketMessage(BaseModel):
+    type: str
+    data: dict        
+
 class UtilisateurResponse(UtilisateurBase):
     id: int
     nom: str

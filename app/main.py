@@ -16,15 +16,18 @@ import os
 import shutil
 import uuid
 
+
 models.Base.metadata.create_all(bind=engine)
 
+
 app = FastAPI()
-app.mount("/uploads", StaticFiles(directory="Uploads"), name="uploads")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 origins = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
 ]
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +38,7 @@ app.add_middleware(
 )
 
 # Ensure uploads directory exists
-UPLOAD_DIR = "Uploads"
+UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
     os.makedirs(UPLOAD_DIR)
 
@@ -87,7 +90,7 @@ async def upload_image(
         file.file.close()
     
     # Return the relative path
-    return {"image_url": f"/Uploads/{file_name}"}
+    return {"image_url": f"/uploads/{file_name}"}
 
 # ------------------ AUTHENTIFICATION ------------------
 @app.post("/admin/creer_admin", response_model=schemas.UtilisateurResponse)
@@ -354,7 +357,7 @@ def rejeter_proposition(
     return {"message": "Proposition rejetée avec succès"}
 
 
-@app.get("/propositions", response_model=List[schemas.PropositionPlanteResponse])
+@app.get("admin/propositions", response_model=List[schemas.PropositionPlanteResponse])
 def lire_toutes_propositions(
     skip: int = 0,
     limit: int = 100,
