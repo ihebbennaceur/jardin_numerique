@@ -3,6 +3,10 @@ from sqlalchemy.orm import relationship
 from database import Base
 from enum import Enum as PyEnum
 from typing import Optional
+from datetime import datetime
+import enum
+from sqlalchemy import DateTime
+from sqlalchemy.ext.declarative import declarative_base
 
 class Role(str, PyEnum):
     USER = "user"
@@ -19,6 +23,7 @@ class Utilisateur(Base):
     plantes = relationship("Plante", back_populates="proprietaire")
     propositions = relationship("PropositionPlante", back_populates="utilisateur")
     conseils = relationship("Conseil", back_populates="auteur")
+    notifications = relationship("Notification", back_populates="utilisateur")
 
 class Plante(Base):
     __tablename__ = "plantes"
@@ -60,3 +65,19 @@ class Recommendation(Base):
     utilisateur_id = Column(Integer, ForeignKey("utilisateurs.id"))
     raison = Column(String)
     date = Column(String)
+
+
+class NotificationType(enum.Enum):
+    PROPOSITION_VALIDEE = "approved"
+    PROPOSITION_REJETEE = "rejected"
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id = Column(Integer, primary_key=True, index=True)
+    utilisateur_id = Column(Integer, ForeignKey("utilisateurs.id"), nullable=False)
+    type = Column(Enum(NotificationType), nullable=False)
+    message = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_read = Column(Boolean, default=False)
+
+    utilisateur = relationship("Utilisateur", back_populates="notifications")    

@@ -351,9 +351,20 @@ def rejeter_proposition(
     if not user or user.role != "admin":
         raise HTTPException(status_code=403, detail="Permission refusée")
     
-    proposition = crud.reject_proposition(db, proposition_id)
+    proposition = db.query(models.PropositionPlante).filter(models.PropositionPlante.id == proposition_id).first()
     if not proposition:
         raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    
+    crud.reject_proposition(db, proposition_id)
+    
+    # Créer une notification pour l'utilisateur
+    create_notification(
+        db=db,
+        utilisateur_id=proposition.utilisateur_id,
+        notification_type=models.NotificationType.PROPOSITION_REJETEE,
+        message=f"Votre proposition '{proposition.name}' a été rejetée."
+    )
+    
     return {"message": "Proposition rejetée avec succès"}
 
 
@@ -385,9 +396,22 @@ def valider_proposition(
     if not user or user.role != "admin":
         raise HTTPException(status_code=403, detail="Permission refusée")
     
+    proposition = db.query(models.PropositionPlante).filter(models.PropositionPlante.id == proposition_id).first()
+    if not proposition:
+        raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    
     plante = crud.valider_proposition(db, proposition_id)
     if not plante:
         raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    
+    # Créer une notification pour l'utilisateur
+    create_notification(
+        db=db,
+        utilisateur_id=proposition.utilisateur_id,
+        notification_type=models.NotificationType.PROPOSITION_VALIDEE,
+        message=f"Votre proposition '{proposition.name}' a été validée et ajoutée comme plante."
+    )
+    
     return schemas.PlanteResponse(
         id=plante.id,
         name=plante.name,
@@ -474,3 +498,60 @@ def supprimer_proposition_par_utilisateur(
     db.delete(proposition)
     db.commit()
     return {"message": f"Proposition avec ID {proposition_id} supprimée avec succès"}
+
+
+def create_notification(db: Session, utilisateur_id: int, notification_type: models.NotificationType, message: str):
+    notification = models.Notification(
+        utilisateur_id=utilisateur_id,
+        type=notification_type,
+        message=message
+    )
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+    return notification
+
+@app.get("/notifications", response_model=List[schemas.NotificationResponse])
+def lire_notifications(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    
+    notifications = db.query(models.Notification).filter(models.Notification.utilisateur_id == user.id).order_by(models.Notification.created_at.desc()).all()
+    return [
+        schemas.NotificationResponse(
+            id=notification.id,
+            type=notification.type.value,
+            message=notification.message,
+            created_at=notification.created_at,
+            is_read=notification.is_read
+        ) for notification in notifications
+    ]
+
+# Route pour marquer une notification comme lue
+@app.put("/notifications/{notification_id}/read")
+def marquer_notification_lue(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    
+    notification = db.query(models.Notification).filter(models.Notification.id == notification_id, models.Notification.utilisateur_id == user.id).first()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification non trouvée")
+    
+    notification.is_read = True
+    db.commit()
+    return {"message": "Notification marquée comme lue"}

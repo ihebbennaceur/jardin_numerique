@@ -145,3 +145,15 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    type: str
+    message: str
+    created_at: datetime
+    is_read: bool
+
+    class Config:
+        orm_mode = True
+        arbitrary_types_allowed = True    
