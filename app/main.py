@@ -431,3 +431,46 @@ def lire_utilisateurs_admin(
         raise HTTPException(status_code=403, detail="Permission refusée")
     return crud.get_utilisateurs(db, skip=skip, limit=limit)
 
+
+@app.delete("/admin/utilisateurs/{user_id}")
+def supprimer_utilisateur_par_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: Utilisateur = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Accès refusé : réservé à l’admin")
+    
+    user = db.query(Utilisateur).filter(Utilisateur.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    
+    db.delete(user)
+    db.commit()
+    return {"message": f"Utilisateur avec ID {user_id} supprimé avec succès"}
+
+
+@app.delete("/propositions/{proposition_id}")
+def supprimer_proposition_par_utilisateur(
+    proposition_id: int,
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+):
+    email = decode_access_token(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Token invalide")
+    
+    user = crud.get_utilisateur_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+    
+    proposition = db.query(models.PropositionPlante).filter(models.PropositionPlante.id == proposition_id).first()
+    if not proposition:
+        raise HTTPException(status_code=404, detail="Proposition non trouvée")
+    
+    if proposition.utilisateur_id != user.id:
+        raise HTTPException(status_code=403, detail="Accès interdit : cette proposition ne vous appartient pas")
+
+    db.delete(proposition)
+    db.commit()
+    return {"message": f"Proposition avec ID {proposition_id} supprimée avec succès"}
