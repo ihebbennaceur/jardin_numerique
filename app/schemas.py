@@ -65,7 +65,7 @@ class PlanteResponse(BaseModel):
     description: str
     image_url: Optional[str] = None
     approuvee: bool
-    proprietaire_id: int
+    proprietaire_id: Optional[int] = None
     created_by: str
 
     class Config:
@@ -92,7 +92,7 @@ class PropositionPlanteResponse(BaseModel):
     description: str
     image_url: Optional[str] = None
     statut: str
-    utilisateur_id: int
+    utilisateur_id: Optional[int] = None
 
     class Config:
         orm_mode = True

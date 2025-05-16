@@ -199,7 +199,7 @@ def lire_plantes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db))
             image_url=plante.image_url,
             approuvee=plante.approuvee,
             proprietaire_id=plante.proprietaire_id,
-            created_by=plante.proprietaire.nom
+            created_by=plante.proprietaire.nom if plante.proprietaire else "Utilisateur supprimé"
         ) for plante in plantes
     ]
 
