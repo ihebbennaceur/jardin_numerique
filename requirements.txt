@@ -16,3 +16,5 @@ tensorflow
 dotenv
 requests
 bcrypt==4.0.1
+python-dotenv 
+aiosmtplib

@@ -152,3 +152,4 @@ def create_recommendation(db: Session, recommendation: schemas.RecommendationCre
 
 def get_recommendations_utilisateur(db: Session, user_id: int):
     return db.query(models.Recommendation).filter(models.Recommendation.utilisateur_id == user_id).all()
+
