@@ -4,8 +4,10 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from database import get_db  # Assurez-vous que cette fonction est bien définie dans votre projet
-from models import Utilisateur  # Assurez-vous que le modèle Utilisateur est correctement importé
+# from database import get_db  
+from app.database import get_db
+from app.schemas import UtilisateurCreate
+from app.models import Utilisateur 
 
 SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"

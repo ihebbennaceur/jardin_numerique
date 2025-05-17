@@ -2,25 +2,33 @@ from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import models, schemas, crud
-from database import SessionLocal, engine
-from auth import create_access_token, decode_access_token, verify_password, get_password_hash
+# import models, schemas, crud
+from app import models, schemas, crud ,auth
+# from app.database import Base
+import app.database
+
+# from database import SessionLocal, engine
+# from auth import create_access_token, decode_access_token, verify_password, get_password_hash
 from datetime import timedelta
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from models import Base, Utilisateur
-from auth import get_current_user 
+from app.models import Base, Utilisateur
+from app.auth import get_current_user 
 from passlib.context import CryptContext
 from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 import uuid
-
+from app.database import engine,SessionLocal
+from app.auth import decode_access_token ,verify_password ,get_password_hash ,create_access_token
 
 models.Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI()
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 origins = [

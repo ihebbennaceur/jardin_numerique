@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
-import models, schemas
-from auth import get_password_hash
+# import models, schemas
+from app import models, schemas
+
+from app.auth import get_password_hash
 from typing import List, Optional
 from datetime import datetime
 

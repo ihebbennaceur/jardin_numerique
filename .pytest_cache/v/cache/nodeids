@@ -1,0 +1,7 @@
+[
+  "tests/test_auth.py::test_admin_creation",
+  "tests/test_auth.py::test_duplicate_admin_creation",
+  "tests/test_plantes.py::test_ajouter_plante",
+  "tests/test_plantes.py::test_lire_plantes",
+  "tests/test_upload_image.py::test_upload_image"
+]

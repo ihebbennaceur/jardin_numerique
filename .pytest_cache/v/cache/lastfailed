@@ -1,0 +1,6 @@
+{
+  "tests/test_plantes.py::test_ajouter_plante": true,
+  "tests/test_plantes.py::test_lire_plantes": true,
+  "tests/test_upload_image.py::test_upload_image": true,
+  "tests/test_plantes.py::TestClient": true
+}

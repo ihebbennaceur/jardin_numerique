@@ -1,10 +1,11 @@
-fastapi
+fastapi[all]
 uvicorn
 sqlalchemy
 pydantic
 passlib[bcrypt]
 python-jose[cryptography]
 pytest
+pytest-asyncio
 httpx
 email-validator
 tensorflow 
