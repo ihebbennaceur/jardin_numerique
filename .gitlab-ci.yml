@@ -1,0 +1,65 @@
+stages:
+  - build
+  - lint
+  - format
+  - test
+  - deploy
+
+variables:
+  IMAGE_NAME: my-fastapi-app
+  IMAGE_TAG: latest
+
+# Build Docker image
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+
+# Lint with flake8
+lint:
+  stage: lint
+  image: python:3.10
+  before_script:
+    - pip install flake8
+  script:
+    - flake8 app/ tests/
+  allow_failure: true  # Le pipeline continue même si des erreurs sont détectées
+
+# Format check with black
+format:
+  stage: format
+  image: python:3.10
+  before_script:
+    - pip install black
+  script:
+    - black --check .
+  allow_failure: true
+
+# Run tests with pytest
+test:
+  stage: test
+  image: python:3.10
+  before_script:
+    - pip install -r requirements.txt
+    - pip install pytest
+  script:
+    - pytest tests/
+
+build-and-push:
+  stage: build-and-push
+  image: docker:latest  
+  services:
+    - docker:dind
+  script:
+    - echo "Construction de l'image Docker"
+    - docker build -t ihebbennaceur/tinyleaves-fastapi .
+    - echo "Connexion à Docker Hub"
+    - docker login -u "ihebbennaceur" -p "$DOCKER_HUB_PASSWORD"
+    - echo "Pousser l'image Docker sur Docker Hub"
+    - docker push ihebbennaceur/my-backend-app
+  only:
+    - main  
+

@@ -1,21 +1,28 @@
+# Core dependencies
 fastapi[all]
 uvicorn
 sqlalchemy
 pydantic
-passlib[bcrypt]
 python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+email-validator
+python-dotenv
+bcrypt==4.0.1
+
+# Testing
 pytest
 pytest-asyncio
 httpx
-email-validator
-tensorflow 
-keras 
-pillow
-numpy
-python-multipart
-tensorflow
-dotenv
+
+# # ML-related dependencies (si ton projet utilise du ML)
+# tensorflow
+# keras
+# pillow
+# numpy
+
+# # Mailing
+# aiosmtplib
+
+# HTTP client
 requests
-bcrypt==4.0.1
-python-dotenv 
-aiosmtplib
