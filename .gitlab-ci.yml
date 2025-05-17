@@ -1,45 +1,32 @@
 stages:
-  - build
   - lint
-  - format
   - test
-  - deploy
+  - docker-build-push
+  
 
 variables:
-  IMAGE_NAME: my-fastapi-app
+  IMAGE_NAME: ihebbennaceur/tinyleaves-fastapi
   IMAGE_TAG: latest
 
-# Build Docker image
-build:
-  stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+# --------------------------------------
+# STAGE: Vérification du code (qualité)
+# --------------------------------------
 
-# Lint with flake8
-lint:
+flake8-lint:
   stage: lint
   image: python:3.10
   before_script:
     - pip install flake8
   script:
     - flake8 app/ tests/
-  allow_failure: true  # Le pipeline continue même si des erreurs sont détectées
+  allow_failure: true  # Bloquant si erreurs
 
-# Format check with black
-format:
-  stage: format
-  image: python:3.10
-  before_script:
-    - pip install black
-  script:
-    - black --check .
-  allow_failure: true
 
-# Run tests with pytest
-test:
+# --------------------------------------
+# STAGE: Tests
+# --------------------------------------
+
+pytest-tests:
   stage: test
   image: python:3.10
   before_script:
@@ -47,19 +34,26 @@ test:
     - pip install pytest
   script:
     - pytest tests/
+  artifacts:
+    when: always
+    reports:
+      junit: pytest-report.xml
 
-build-and-push:
-  stage: build-and-push
-  image: docker:latest  
+# --------------------------------------
+# STAGE: Construction de l'image Docker nd push
+# --------------------------------------
+build & push:
+  stage: docker-build-push
+  image: docker:latest
   services:
     - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - echo "$DOCKER_HUB_PASSWORD" | docker login -u "ihebbennaceur" --password-stdin
   script:
-    - echo "Construction de l'image Docker"
-    - docker build -t ihebbennaceur/tinyleaves-fastapi .
-    - echo "Connexion à Docker Hub"
-    - docker login -u "ihebbennaceur" -p "$DOCKER_HUB_PASSWORD"
-    - echo "Pousser l'image Docker sur Docker Hub"
-    - docker push ihebbennaceur/my-backend-app
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .
+    - docker push $IMAGE_NAME:$IMAGE_TAG
   only:
-    - main  
+    - main
 
